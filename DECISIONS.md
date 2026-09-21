@@ -10,9 +10,9 @@ svcdesk_decisions:
 
 ## C1 - SLA clock for P1
 
-**Decision:** wallclock
+**Decision:** wallclock (both P1 SLA targets run on a continuous 24/7 wall-clock, while P2 to P4 use the business-hours clock).
 
-**Rejected alternative:** business
+**Rejected alternative:** business (running all priorities on a business-hours clock, which would pause P1 tickets outside business hours).
 
 **Reason:** Under R-14, P1 tickets represent critical system failures affecting the entire organization where work has stopped, meaning they require round-the-clock (24/7) support. Utilizing a "wall-clock" target guarantees that a P1 ticket must be acknowledged within 15 minutes and resolved within 4 hours from its actual creation time, regardless of whether it is a weekend, holiday, or late evening. The "business" alternative would pause the SLA clocks outside the Warsaw business hours window (Monday to Friday, 08:00 to 16:00), which would allow a severe system outage on Friday evening to remain unaddressed until Monday morning without breaching SLA compliance. This is unacceptable for high-impact organizational issues, and thus the continuous wall-clock tracking is chosen.
 
@@ -22,9 +22,9 @@ svcdesk_decisions:
 
 ## C2 - Closed tickets and reopening
 
-**Decision:** immutable
+**Decision:** immutable (closed tickets are strictly immutable and can never be reopened, ensuring SLA audit integrity).
 
-**Rejected alternative:** reopen
+**Rejected alternative:** reopen (allowing closed tickets to be reopened within a 7-day window if the fix didn't work).
 
 **Reason:** Under R-09, a closed ticket is strictly immutable. This preserves the operational and auditing integrity of completed work and prevents historical metrics from being manipulated or skewed. If a customer reports that a previously resolved and closed issue has recurred, reopening the original ticket would distort the resolution timestamps and SLA metrics of the original incident. The correct procedure is to enforce immutability on closed tickets, forcing the creation of a new, separate ticket that explicitly references the closed one using the `related_to` field. This ensures a clean audit trail and accurate SLA accounting.
 
@@ -34,9 +34,9 @@ svcdesk_decisions:
 
 ## C3 - VIP reporters and the priority matrix
 
-**Decision:** vip
+**Decision:** vip (automatically elevate P3 and P4 tickets to P2 if they are raised by a VIP reporter to ensure executive visibility).
 
-**Rejected alternative:** matrix
+**Rejected alternative:** matrix (relying strictly on the impact and urgency matrix for priority calculations, which would ignore the VIP status).
 
 **Reason:** Under R-06, tickets raised by VIP reporters must be treated with high urgency to ensure executive-level issues are visible and actionable immediately. The standard priority matrix (R-04) might compute P3 or P4 priority for VIP tickets (e.g., impact 3, urgency 3, such as a cosmetic or localized issue for an executive). Under the "vip" choice, after the priority is calculated using the standard impact/urgency matrix, any VIP ticket resulting in a P3 or P4 is automatically elevated to a minimum priority of P2. P1 and P2 priorities are left unchanged. The "matrix" alternative was rejected because it would treat VIP tickets with standard timelines (up to 72 hours for P4), failing to address the business-critical need for prompt executive support.
 
