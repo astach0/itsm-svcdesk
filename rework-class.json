@@ -1,0 +1,9 @@
+{
+    "source":  "gh api --paginate \"repos/swasik/itsm-2026-submissions/issues?state=all\u0026labels=receipted,kind:submission\u0026per_page=100\"",
+    "captured_at":  "2026-09-26T18:50:29Z",
+    "capture_path":  "class-submissions.json",
+    "sha256":  "1d0b0f7b1d7446b01654ea9b8e5b49d9051f577c66718e58d6a47d50be98abc0",
+    "deployments":  86,
+    "rework_deployments":  21,
+    "deployment_rework_rate":  0.244186
+}

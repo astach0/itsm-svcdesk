@@ -10,6 +10,7 @@ import sqlite3
 import os
 import uuid
 from contextlib import asynccontextmanager
+from .dora import compute_metrics
 
 # Config
 DB_PATH = os.environ.get("SVCDESK_DB", "svcdesk.db")
@@ -44,6 +45,16 @@ def init_db():
         related_to TEXT,
         ack_due_at TEXT NOT NULL,
         resolve_due_at TEXT NOT NULL
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ticket_events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id TEXT NOT NULL,
+        at TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        state TEXT NOT NULL
     )
     """)
     conn.commit()
@@ -282,6 +293,10 @@ async def create_ticket(
         ticket_in.impact, ticket_in.urgency, priority, "new", created_at_str,
         None, None, None, ticket_in.related_to, ack_due_str, resolve_due_str
     ))
+    cursor.execute("""
+    INSERT INTO ticket_events (ticket_id, at, phase, priority, state)
+    VALUES (?, ?, ?, ?, ?)
+    """, (ticket_id, created_at_str, "created", priority, "new"))
     db.commit()
 
     cursor.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
@@ -408,6 +423,10 @@ async def ack_ticket(
     SET state = 'acknowledged', acknowledged_at = ?
     WHERE id = ?
     """, (now_str, id))
+    cursor.execute("""
+    INSERT INTO ticket_events (ticket_id, at, phase, priority, state)
+    VALUES (?, ?, ?, ?, ?)
+    """, (id, now_str, "acknowledged", row["priority"], "acknowledged"))
     db.commit()
 
     cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
@@ -471,6 +490,10 @@ async def resolve_ticket(
     SET state = 'resolved', resolved_at = ?
     WHERE id = ?
     """, (now_str, id))
+    cursor.execute("""
+    INSERT INTO ticket_events (ticket_id, at, phase, priority, state)
+    VALUES (?, ?, ?, ?, ?)
+    """, (id, now_str, "resolved", row["priority"], "resolved"))
     db.commit()
 
     cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
@@ -503,6 +526,10 @@ async def close_ticket(
     SET state = 'closed', closed_at = ?
     WHERE id = ?
     """, (now_str, id))
+    cursor.execute("""
+    INSERT INTO ticket_events (ticket_id, at, phase, priority, state)
+    VALUES (?, ?, ?, ?, ?)
+    """, (id, now_str, "closed", row["priority"], "closed"))
     db.commit()
 
     cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
@@ -566,3 +593,25 @@ async def reopen_ticket(
 
     cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
     return row_to_ticket_dict(cursor.fetchone())
+
+
+@app.post("/dora/metrics")
+async def dora_metrics(payload: dict):
+    try:
+        return compute_metrics(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": {"code": "validation", "message": str(exc)}}
+        )
+
+
+@app.get("/dora/ticket-events")
+async def dora_ticket_events(db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT ticket_id, at, phase, priority, state
+        FROM ticket_events
+        ORDER BY at ASC, ticket_id ASC
+    """)
+    return [dict(row) for row in cursor.fetchall()]
