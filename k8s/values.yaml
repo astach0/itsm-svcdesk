@@ -1,0 +1,10 @@
+# ai-generated: 70% - based on the Lab 3 published kube-prometheus-stack values template
+# kube-prometheus-stack 89.2.2; Stretch 3, L3-STRETCH-3, MONITORING-SPEC.md M-31.
+prometheus:
+  prometheusSpec:
+    retention: 2h
+    resources:
+      limits:
+        memory: 1Gi
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false

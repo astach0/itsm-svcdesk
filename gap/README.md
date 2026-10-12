@@ -1,0 +1,8 @@
+<!-- ai-generated: 100% - written from the actual Lab 3 Toxiproxy load measurement -->
+# Client/server latency gap
+
+This measurement places Toxiproxy between the load-generating client and svcdesk. The configured downstream latency toxic adds 100 milliseconds of latency with 10 milliseconds of jitter and toxicity 1.0. The client p99 is the load generator's end-to-end request latency; the server p99 is calculated from the application's Prometheus request-duration histogram over the same run.
+
+The measured client p99 was 0.3155 seconds. The measured server histogram p99 was 0.2113 seconds. The client-minus-server difference is 0.1042 seconds. These measurements, together with the declared toxic configuration, are stored in gap.json; they were parsed from the actual load output and were not invented or inferred from the configured delay.
+
+The two measurements observe different timing boundaries. Client latency includes the network round trip and the downstream response path through Toxiproxy, while the server histogram ends inside svcdesk and does not include time spent delivering the response after the server has sent it. Scheduling and measurement variance, transfer overhead, and the toxic jitter mean the difference need not equal the configured delay exactly. The Lab 3 checker repeats this measurement through its own Toxiproxy instance and compares the measured gap within the tolerance required by the specification.

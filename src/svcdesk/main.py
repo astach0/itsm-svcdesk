@@ -1,7 +1,7 @@
-# ai-generated: 100% - Handcrafted by Gemini CLI implementation
-from fastapi import FastAPI, Depends, HTTPException, Header, Request
+# ai-generated: 100% - Existing service originated with Gemini CLI; Lab 3 search and metrics instrumentation added with ChatGPT assistance.
+from fastapi import FastAPI, Depends, HTTPException, Header, Request, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictInt
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta, time
@@ -9,11 +9,25 @@ from zoneinfo import ZoneInfo
 import sqlite3
 import os
 import uuid
+import time as time_module
+import httpx
 from contextlib import asynccontextmanager
+from prometheus_client import CollectorRegistry, Histogram, generate_latest
 from .dora import compute_metrics
 
 # Config
 DB_PATH = os.environ.get("SVCDESK_DB", "svcdesk.db")
+KB_INDEX_URL = os.environ.get("KB_INDEX_URL", "http://kb-index:8080").rstrip("/")
+
+# A private registry keeps the exported metrics limited to the Lab 3 histogram.
+METRICS_REGISTRY = CollectorRegistry()
+REQUEST_DURATION = Histogram(
+    "http_server_request_duration_seconds",
+    "HTTP server request duration in seconds",
+    ["http_request_method", "http_route", "http_response_status_code"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30, 0.35, 0.4, 0.5, 0.75, 1, 1.5, 2.5, 5, 10),
+    registry=METRICS_REGISTRY,
+)
 
 # Ensure parent directory of DB_PATH exists
 db_dir = os.path.dirname(DB_PATH)
@@ -63,9 +77,33 @@ def init_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    app.state.kb_client = httpx.AsyncClient(timeout=httpx.Timeout(3.0))
+    try:
+        yield
+    finally:
+        await app.state.kb_client.aclose()
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def observe_request_duration(request: Request, call_next):
+    # /metrics may be excluded to avoid measuring the scrape endpoint itself.
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    started = time_module.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        route_obj = request.scope.get("route")
+        route_template = getattr(route_obj, "path", None) or "unmatched"
+        REQUEST_DURATION.labels(
+            request.method, route_template, str(status_code)
+        ).observe(time_module.perf_counter() - started)
 
 # DB Dependency
 def get_db():
@@ -247,6 +285,48 @@ def row_to_ticket_dict(row: sqlite3.Row) -> dict:
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "svcdesk"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(
+        content=generate_latest(METRICS_REGISTRY),
+        media_type="text/plain; version=0.0.4",
+    )
+
+
+@app.get("/kb/search")
+async def kb_search(
+    request: Request,
+    q: str = Query(..., min_length=1, max_length=200),
+):
+    """Search the upstream knowledge-base index exactly once per valid query."""
+    try:
+        upstream = await request.app.state.kb_client.get(
+            f"{KB_INDEX_URL}/search", params={"q": q}
+        )
+        if upstream.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail={"error": {
+                    "code": "upstream_unavailable",
+                    "message": "Knowledge-base index is unavailable",
+                }},
+            )
+        payload = upstream.json()
+        hits = payload["hits"]
+    except HTTPException:
+        raise
+    except (httpx.RequestError, ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=502,
+            detail={"error": {
+                "code": "upstream_unavailable",
+                "message": "Knowledge-base index is unavailable",
+            }},
+        )
+
+    return {"query": q, "hits": hits}
 
 @app.post("/tickets", status_code=201)
 async def create_ticket(

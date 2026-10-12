@@ -1,0 +1,18 @@
+# ai-generated: 70% - written from the Lab 3 M-31 ServiceMonitor requirements
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: svcdesk
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: svcdesk
+spec:
+  selector:
+    matchLabels:
+      app: svcdesk
+  namespaceSelector:
+    any: true
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

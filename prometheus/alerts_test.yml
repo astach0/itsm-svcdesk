@@ -1,0 +1,50 @@
+﻿# ai-generated: 100% - Manually prepared alert boundary tests from the Lab 3 SLO rules; validate with promtool.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Fast burn: 18% errors after t=121m. The 1h ratio crosses 14.4% around t=168m;
+  # with for: 5m the intended firing point is t=173m. 18% stays below the 21.6% mutant threshold.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: '0+1000x120 120820+820x240'
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: '0x120 180+180x240'
+    alert_rule_test:
+      - eval_time: 172m
+        alertname: KbSearchAvailabilityFastBurn
+        exp_alerts: []
+      - eval_time: 173m
+        alertname: KbSearchAvailabilityFastBurn
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P1
+            exp_annotations:
+              summary: "Fast availability error budget burn on /kb/search (1h long window and 5m short window, burn rate 14.4)"
+
+  # Slow burn: 2.5% errors after t=401m. The 6h ratio crosses 2% around t=688m;
+  # with for: 30m the intended firing point is t=718m. 2.5% stays below the 3% mutant threshold.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: '0+1000x400 400975+975x400'
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="502"}'
+        values: '0x400 25+25x400'
+    alert_rule_test:
+      - eval_time: 717m
+        alertname: KbSearchAvailabilitySlowBurn
+        exp_alerts: []
+      - eval_time: 718m
+        alertname: KbSearchAvailabilitySlowBurn
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: availability
+              severity: P2
+            exp_annotations:
+              summary: "Slow availability error budget burn on /kb/search (6h long window and 30m short window, burn rate 2)"

@@ -1,0 +1,53 @@
+# ai-generated: 70% - generated from prometheus/alerts.yml to keep rules in sync
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: svcdesk-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: svcdesk
+spec:
+    groups:
+      - name: svcdesk-slo
+        rules:
+          - alert: KbSearchAvailabilityFastBurn
+            expr: |
+              (
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search", http_response_status_code=~"5.."}[1h]))
+                /
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[1h]))
+              ) > 14.4 * (1 - 0.99)
+              and
+              (
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search", http_response_status_code=~"5.."}[5m]))
+                /
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[5m]))
+              ) > 14.4 * (1 - 0.99)
+            for: 5m
+            labels:
+              service: svcdesk
+              slo: availability
+              severity: P1
+            annotations:
+              summary: "Fast availability error budget burn on /kb/search (1h long window and 5m short window, burn rate 14.4)"
+
+          - alert: KbSearchAvailabilitySlowBurn
+            expr: |
+              (
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search", http_response_status_code=~"5.."}[6h]))
+                /
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[6h]))
+              ) > 2 * (1 - 0.99)
+              and
+              (
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search", http_response_status_code=~"5.."}[30m]))
+                /
+                sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[30m]))
+              ) > 2 * (1 - 0.99)
+            for: 30m
+            labels:
+              service: svcdesk
+              slo: availability
+              severity: P2
+            annotations:
+              summary: "Slow availability error budget burn on /kb/search (6h long window and 30m short window, burn rate 2)"
