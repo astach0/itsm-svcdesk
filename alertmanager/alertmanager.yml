@@ -1,0 +1,35 @@
+# ai-generated: 90% - Claude Code drafted the routing tree and the inhibit rule from INCIDENT-SPEC.md and the template
+# alertmanager/alertmanager.yml - the routing tree (INCIDENT-SPEC.md I-04 to I-08; checks L4-CORE-2.04 to 2.08).
+# P1 pages; P2 and P3 go to chat. While a shop P1 fires, the shop's P2 and P3 are muted: the page already says the
+# shop is broken, and the chat noise of its downstream symptoms would only distract the on-call.
+global:
+  resolve_timeout: 5m
+route:
+  receiver: chat                  # the root: an alert that matches no child ends here - never the pager
+  group_by: [alertname, service]
+  group_wait: 10s                 # the first notification of a new group waits this long: it is part of the MTTA
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="P1"']
+      receiver: pager
+    - matchers: ['severity=~"P2|P3"']
+      receiver: chat
+receivers:
+  - name: pager                   # the on-call's phone: http://localhost:18091 shows what reached it
+    webhook_configs:
+      - url: http://pager:8080/hook/pager
+        send_resolved: true
+  - name: chat
+    webhook_configs:
+      - url: http://pager:8080/hook/chat
+        send_resolved: true
+inhibit_rules:
+  # A firing shop P1 mutes the shop's P2 and P3. `equal: [system]` keeps it inside the shop: svcdesk's Lab 3 alerts
+  # carry no `system` label, so they are never muted by a shop page (and vice versa).
+  - source_matchers:
+      - 'severity="P1"'
+      - 'system="shop"'
+    target_matchers:
+      - 'severity=~"P2|P3"'
+    equal: [system]

@@ -1,0 +1,60 @@
+{
+  "investigator": {
+    "agent": "the course agent loop agent.py (Lab 4 package)",
+    "model": "qwen3:1.7b (Ollama 0.40.10, 8k context)",
+    "mcp_server": "prom_mcp.py (mcp 2.2.0)",
+    "transcript": "ai-rca/transcript.md"
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "hypothesis": "The incident is likely caused by **excessive load on the checkout service**, possibly due to a **sudden surge in requests** from the load generator, leading to **API throttling**, **database connection issues**, or **service resource exhaustion**.",
+      "component": "checkout",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_SERVER\"}[5m])) > 0.2",
+      "at": "2026-10-24T07:13:00Z",
+      "result": false,
+      "verdict": "hallucinated",
+      "evidence": "Checkout served 0.099 requests/s at 07:13 (window 07:08-07:13, fully inside the fault) against 0.088/s on the baseline at 07:03:06: no surge on checkout, so the prediction (more than about twice the baseline) returns nothing. Checkout's errors came with normal traffic; the load surge of the incident hit the frontend, not checkout (see H2)."
+    },
+    {
+      "id": "H2",
+      "hypothesis": "**Load Surge:** The **load-generator** metrics exhibit **excessive request volumes** (e.g., values > 1000 for `POST` calls), likely causing **rate limiting** or **database connection exhaustion**.",
+      "component": "load-generator",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"load-generator\", span_kind=\"SPAN_KIND_CLIENT\"}[5m])) > 10 unless on() sum(rate(traces_span_metrics_calls_total{service_name=\"load-generator\", span_kind=\"SPAN_KIND_CLIENT\", span_name=\"POST\"}[5m])) > 2",
+      "at": "2026-10-24T07:13:00Z",
+      "result": true,
+      "verdict": "partially_correct",
+      "evidence": "The surge held: load-generator's client calls ran at 25.3/s at 07:13 against 2.26/s on the baseline (x11; the left side returns nothing at 07:03:06). The mechanism did not: its POST calls stayed at 0.74/s (0.84/s on the baseline), so the right side is empty and the `unless` keeps the left. The extra traffic was GET requests to the home page (loadGeneratorFloodHomepage), not POST calls, and it did not cause checkout's errors."
+    },
+    {
+      "id": "H3",
+      "hypothesis": "Multiple endpoints (e.g., `POST /api/cart`, `POST /oteldemo.CartService/EmptyCart`) show **status_code ERROR** in the metrics.",
+      "component": "cart",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"cart\", status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0",
+      "at": "2026-10-24T07:13:00Z",
+      "result": false,
+      "verdict": "hallucinated",
+      "evidence": "Cart served 0.83 requests/s at 07:13 and never produced a STATUS_CODE_ERROR span in the whole snapshot: the error series that exist belong to payment, checkout, frontend, frontend-proxy, ad, recommendation and load-generator, not cart. The agent's own query returned ad's flagd EventStream client errors, not cart's endpoints."
+    },
+    {
+      "id": "H4",
+      "hypothesis": "The alert is tied to the **checkout service**, pointing to **API or database** problems (e.g., timeouts, throttling, or failed transactions).",
+      "component": "checkout",
+      "predicts": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_SERVER\"}[5m])) > 0.05 unless on() histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))) > 2000",
+      "at": "2026-10-24T07:13:00Z",
+      "result": true,
+      "verdict": "partially_correct",
+      "evidence": "Failed transactions held: 7.4 % of checkout's requests failed at 07:13 and none on the baseline (left side empty at 07:03:06). Timeouts did not: checkout's p95 was 48 ms (49.9 ms on the baseline), so the right side is empty. The failures came from payment (paymentFailure), not from an API timeout or a database. The agent read the checkout service off the CheckoutErrorRate alert (alerts_at); it went no further than the alert already said."
+    },
+    {
+      "id": "H5",
+      "hypothesis": "This suggests a **backend service bottleneck** or **resource exhaustion**.",
+      "component": null,
+      "predicts": null,
+      "at": null,
+      "result": null,
+      "verdict": "unfalsifiable",
+      "why_no_query": "It names no service, no resource and no signal: 'a backend service bottleneck or resource exhaustion' is true of any slow or failing system, so no query on the snapshot could prove it wrong."
+    }
+  ]
+}

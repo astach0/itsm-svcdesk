@@ -5,7 +5,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-BASE = os.environ.get("BASE_URL", "http://svcdesk:8080")
+# SVCDESK_URL is the name the course contract uses; BASE_URL is kept as a fallback.
+BASE = (os.environ.get("SVCDESK_URL") or os.environ.get("BASE_URL") or "http://svcdesk:8080").rstrip("/")
 FIXTURE = Path("/fixtures/events-practice.jsonl")
 EXPECTED = Path("/fixtures/metrics-practice.json")
 

@@ -2,9 +2,9 @@
 name: svcdesk-reviewer
 description: Reviews the svcdesk implementation against the laboratory specification.
 disallowedTools:
-  - git commit
-  - git push
-  - git tag
+  - Bash(git commit *)
+  - Bash(git push *)
+  - Bash(git tag *)
 ---
 
 Review the svcdesk implementation against the repository specifications.

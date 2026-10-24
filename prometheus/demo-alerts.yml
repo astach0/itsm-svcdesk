@@ -1,0 +1,76 @@
+# ai-generated: 90% - Claude Code drafted the rules from INCIDENT-SPEC.md and the template; thresholds checked on the healthy shop
+# prometheus/demo-alerts.yml - symptom alerts on the shop (INCIDENT-SPEC.md I-01, I-02, I-05; checks L4-CORE-2.01,
+# 2.02, 2.05). The playground's Prometheus loads this file next to alerts.yml and evaluates it every 10 s.
+#
+# Design:
+#   - Only SERVER spans: what a service answered its callers. The load generator's client calls fail on the healthy
+#     shop and would page on the baseline (I-10).
+#   - Windows of 5 minutes: the span metrics arrive by OTLP push once a minute.
+#   - Every fault makes checkout fail or slow down (INCIDENT-SPEC.md 2.2), so the two P1s page on checkout's errors
+#     and on its latency: together they page on every draw (I-17).
+#   - The P2 and P3 go to chat and are muted while a shop P1 fires (alertmanager.yml, inhibit_rules).
+#   - One group: alerts that start at the same evaluation compete on severity, so a P1 wins the detection over a P2
+#     or P3 that saw the same symptom (INCIDENT-SPEC.md 4.3).
+#   - `for: 1m` keeps a single noisy minute from paging; `keep_firing_for: 2m` keeps a ratio that hovers around its
+#     threshold from ending the firing run early (the end of the detecting alert's run is the recovery, I-13).
+#   - Latency in MILLISECONDS; 2000 is a bucket boundary of the span metrics' histogram (default buckets of the
+#     collector's span_metrics connector: ... 1000, 1400, 2000, 5000, 10000, 15000).
+#   - The static label `system: shop` is what the inhibit rule's `equal` compares; svcdesk's Lab 3 alerts lack it.
+groups:
+  - name: shop-symptoms
+    rules:
+      - alert: CheckoutErrorRate
+        expr: |
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+          /
+          sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_SERVER"}[5m]))
+          > 0.05
+        for: 1m
+        keep_firing_for: 2m
+        labels:
+          service: checkout
+          severity: P1
+          system: shop
+        annotations:
+          summary: "More than 5 % of checkout requests fail (5 min window)"
+
+      - alert: CheckoutLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name="checkout", span_kind="SPAN_KIND_SERVER"}[5m]))
+          ) > 2000
+        for: 1m
+        keep_firing_for: 2m
+        labels:
+          service: checkout
+          severity: P1
+          system: shop
+        annotations:
+          summary: "Checkout p95 latency above 2 s (5 min window)"
+
+      - alert: FrontendErrorRate
+        expr: |
+          sum(rate(traces_span_metrics_calls_total{service_name="frontend", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+          /
+          sum(rate(traces_span_metrics_calls_total{service_name="frontend", span_kind="SPAN_KIND_SERVER"}[5m]))
+          > 0.05
+        for: 2m
+        labels:
+          service: frontend
+          severity: P2
+          system: shop
+        annotations:
+          summary: "More than 5 % of frontend requests fail (5 min window)"
+
+      - alert: FrontendLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name="frontend", span_kind="SPAN_KIND_SERVER"}[5m]))
+          ) > 2000
+        for: 2m
+        labels:
+          service: frontend
+          severity: P3
+          system: shop
+        annotations:
+          summary: "Frontend p95 latency above 2 s (5 min window)"

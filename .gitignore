@@ -7,3 +7,5 @@ __pycache__/
 # local data: use a named volume in docker-compose.yml, never a bind mount
 data/
 *.db
+# Lab 4: Gemini CLI settings hold paths of this machine
+.gemini/settings.json

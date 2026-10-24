@@ -11,7 +11,7 @@ services:
       svcdesk:
         condition: service_healthy
     environment:
-      BASE_URL: http://svcdesk:8080
+      SVCDESK_URL: http://svcdesk:8080
 
   svcdesk:
     build: .

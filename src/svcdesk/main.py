@@ -1,4 +1,4 @@
-# ai-generated: 100% - Existing service originated with Gemini CLI; Lab 3 search and metrics instrumentation added with ChatGPT assistance.
+# ai-generated: 100% - Existing service originated with Gemini CLI; Lab 3 search and metrics instrumentation added with ChatGPT assistance; ticket lookup refactor and sync DB handlers by Claude Code.
 from fastapi import FastAPI, Depends, HTTPException, Header, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -281,6 +281,16 @@ def row_to_ticket_dict(row: sqlite3.Row) -> dict:
         }
     }
 
+def fetch_ticket_or_404(cursor: sqlite3.Cursor, ticket_id: str) -> sqlite3.Row:
+    cursor.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+    row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "not_found", "message": f"Ticket with ID {ticket_id} not found"}}
+        )
+    return row
+
 # API Endpoints
 @app.get("/health")
 async def health():
@@ -329,7 +339,7 @@ async def kb_search(
     return {"query": q, "hits": hits}
 
 @app.post("/tickets", status_code=201)
-async def create_ticket(
+def create_ticket(
     ticket_in: TicketCreate,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
@@ -384,7 +394,7 @@ async def create_ticket(
     return row_to_ticket_dict(row)
 
 @app.get("/tickets")
-async def list_tickets(
+def list_tickets(
     state: Optional[str] = None,
     priority: Optional[str] = None,
     db: sqlite3.Connection = Depends(get_db)
@@ -408,31 +418,19 @@ async def list_tickets(
     return [row_to_ticket_dict(row) for row in rows]
 
 @app.get("/tickets/{id}")
-async def get_ticket(id: str, db: sqlite3.Connection = Depends(get_db)):
+def get_ticket(id: str, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
     return row_to_ticket_dict(row)
 
 @app.get("/tickets/{id}/sla")
-async def get_ticket_sla(
+def get_ticket_sla(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     priority = row["priority"]
     state = row["state"]
@@ -477,19 +475,13 @@ async def get_ticket_sla(
     }
 
 @app.post("/tickets/{id}/ack")
-async def ack_ticket(
+def ack_ticket(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     if row["state"] != "new":
         raise HTTPException(
@@ -513,19 +505,13 @@ async def ack_ticket(
     return row_to_ticket_dict(cursor.fetchone())
 
 @app.post("/tickets/{id}/start")
-async def start_ticket(
+def start_ticket(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     if row["state"] != "acknowledged":
         raise HTTPException(
@@ -544,19 +530,13 @@ async def start_ticket(
     return row_to_ticket_dict(cursor.fetchone())
 
 @app.post("/tickets/{id}/resolve")
-async def resolve_ticket(
+def resolve_ticket(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     if row["state"] != "in_progress":
         raise HTTPException(
@@ -580,19 +560,13 @@ async def resolve_ticket(
     return row_to_ticket_dict(cursor.fetchone())
 
 @app.post("/tickets/{id}/close")
-async def close_ticket(
+def close_ticket(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     if row["state"] != "resolved":
         raise HTTPException(
@@ -616,19 +590,13 @@ async def close_ticket(
     return row_to_ticket_dict(cursor.fetchone())
 
 @app.post("/tickets/{id}/reopen")
-async def reopen_ticket(
+def reopen_ticket(
     id: str,
     now: datetime = Depends(get_request_time),
     db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE id = ?", (id,))
-    row = cursor.fetchone()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "not_found", "message": f"Ticket with ID {id} not found"}}
-        )
+    row = fetch_ticket_or_404(cursor, id)
 
     state = row["state"]
 
@@ -687,7 +655,7 @@ async def dora_metrics(payload: dict):
 
 
 @app.get("/dora/ticket-events")
-async def dora_ticket_events(db: sqlite3.Connection = Depends(get_db)):
+def dora_ticket_events(db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("""
         SELECT ticket_id, at, phase, priority, state
