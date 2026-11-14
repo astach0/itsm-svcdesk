@@ -1,0 +1,42 @@
+# ai-generated: 100% - Claude Code (Opus 5.5) wrote both rules for svcdesk's SQLite access from the course's P-31 example
+rules:
+  - id: svcdesk-sql-query-not-literal
+    languages: [python]
+    severity: WARNING
+    message: >-
+      SQLite query passed to $CUR.execute() is not a string literal. svcdesk keeps every SQL text a literal with '?'
+      placeholders; a query assembled at run time must be reviewed so that only constant fragments reach it and every
+      value goes through the parameters.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute($Q, ...)
+          - pattern: $CUR.executemany($Q, ...)
+          - pattern: $CUR.executescript($Q)
+      - pattern-not: $CUR.execute("...", ...)
+      - pattern-not: $CUR.executemany("...", ...)
+      - pattern-not: $CUR.executescript("...")
+
+  - id: svcdesk-sqlite-connection-not-closed-in-finally
+    languages: [python]
+    severity: WARNING
+    message: >-
+      sqlite3 connection $CONN is not closed in a finally block (or a with statement): an exception between connect()
+      and close() leaks the connection and its file handle. Use try/finally as get_db() does.
+    metadata:
+      cwe: "CWE-404: Improper Resource Shutdown or Release"
+    patterns:
+      - pattern: $CONN = sqlite3.connect(...)
+      - pattern-not-inside: |
+          $CONN = sqlite3.connect(...)
+          ...
+          try:
+              ...
+          finally:
+              ...
+              $CONN.close()
+              ...
+      - pattern-not-inside: |
+          with closing(...) as $CONN:
+              ...
